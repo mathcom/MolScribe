@@ -3,6 +3,7 @@ from typing import List
 
 import cv2
 import torch
+import tqdm
 
 from .dataset import get_transforms
 from .model import Encoder, Decoder
@@ -84,6 +85,32 @@ class MolScribe:
         encoder.eval()
         decoder.eval()
         return encoder, decoder
+
+
+    def predict_features(self, input_images: List, batch_size=16, reduction=None, use_tqdm=False):
+        device = self.device
+        outputs = []
+        
+        if use_tqdm:
+            iter = tqdm.trange(0, len(input_images), batch_size)
+        else:
+            iter = range(0, len(input_images), batch_size)
+        
+        for idx in iter:
+            batch_images = input_images[idx:idx+batch_size]
+            images = [self.transform(image=image, keypoints=[])['image'] for image in batch_images]
+            images = torch.stack(images, dim=0).to(device)
+            with torch.no_grad():
+                features, _ = self.encoder(images)
+                if reduction == 'mean':
+                    features = features.mean(axis=-1)
+                batch_features = features.detach().cpu().numpy().tolist()
+            outputs += batch_features
+            
+        return outputs
+
+    def predict_feature(self, image):
+        return self.predict_features([image])[0]
 
     def predict_images(self, input_images: List, return_atoms_bonds=False, return_confidence=False, batch_size=16):
         device = self.device
